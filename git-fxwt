@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+
+import os
+import shutil
+import subprocess
+import sys
+
+DOTFILES_DIR = "dotfiles"
+FIREFOX_REPO_URL = "https://github.com/mozilla/firefox"
+
+
+def main():
+    # Get all arguments passed to this script (excluding the script name itself)
+    args = sys.argv[1:]
+
+    # Handle special 'init' sub-command
+    if args and args[0] == "init":
+        init()
+        sys.exit(0)
+
+    # Run git worktree with all the arguments
+    result = subprocess.run(["git", "worktree"] + args)
+
+    # If sub-command is 'add', copy dotfiles into the worktree
+    if result.returncode == 0 and args and args[0] == "add":
+        worktree_path = get_worktree_path(args)
+        if worktree_path:
+            copy_dotfiles_into_worktree(worktree_path)
+        else:
+            print("Error parsing worktree path from arguments")
+            sys.exit(1)
+
+    # Exit with the same return code as git worktree
+    sys.exit(result.returncode)
+
+
+def init():
+    print("Initializing Firefox worktree...")
+
+    if os.path.exists(".git"):
+        print("Error initializing, .git directory already exists")
+        sys.exit(1)
+
+    clone_result = subprocess.run(["git", "clone", "--bare", FIREFOX_REPO_URL, ".git"])
+    if clone_result.returncode != 0:
+        print("Error cloning repository")
+        sys.exit(clone_result.returncode)
+
+    create_dotfiles_dir()
+
+    print(f"Initialized Firefox worktree")
+
+    dotfiles_path = os.path.abspath(DOTFILES_DIR)
+    print(f"IMPORTANT: Copy your dotfiles into {dotfiles_path} before adding worktrees")
+
+
+def create_dotfiles_dir():
+    print(f"Creating {DOTFILES_DIR} directory...")
+    try:
+        os.makedirs(DOTFILES_DIR)
+        print(f"Created {DOTFILES_DIR} directory")
+    except FileExistsError:
+        print(f"{DOTFILES_DIR} directory already exists")
+    except OSError as e:
+        print(f"Error creating {DOTFILES_DIR} directory: {e}")
+        sys.exit(1)
+
+
+def get_worktree_path(args):
+    # Skip 'add' sub-command and find the first non-option argument (the path)
+    i = 1  # Start after 'add'
+    while i < len(args):
+        arg = args[i]
+        # Skip options that start with dash
+        if arg.startswith("-"):
+            # Check if option uses '=' syntax (e.g., -b=branch or --reason=text)
+            if "=" in arg:
+                i += 1
+                continue
+            # Options that take an argument: -b, -B, --reason
+            if arg in ["-b", "-B", "--reason"]:
+                i += 2  # Skip option and its argument
+                continue
+            # All other options (flags that don't take arguments)
+            i += 1
+            continue
+        # Found the path (first non-option argument)
+        return arg
+    return None
+
+
+def copy_dotfiles_into_worktree(worktree_path):
+    print(f"Copying dotfiles into worktree {worktree_path}...")
+
+    if not os.path.exists(DOTFILES_DIR):
+        print(f"Error copying files, no {DOTFILES_DIR} directory found")
+        sys.exit(1)
+
+    for item in os.listdir(DOTFILES_DIR):
+        src = os.path.join(DOTFILES_DIR, item)
+        dst = os.path.join(worktree_path, item)
+        try:
+            if os.path.isfile(src):
+                shutil.copy2(src, dst)
+            elif os.path.isdir(src):
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+            print(f"Copied {src} into {dst}")
+        except OSError as e:
+            print(f"Error copying {src}: {e}")
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
