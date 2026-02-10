@@ -46,12 +46,32 @@ def init():
         print("Error cloning repository")
         sys.exit(clone_result.returncode)
 
+    restore_tracking_branches()
+
     create_dotfiles_dir()
 
     print(f"Initialized Firefox worktree")
 
     dotfiles_path = os.path.abspath(DOTFILES_DIR)
     print(f"IMPORTANT: Copy your dotfiles into {dotfiles_path} before adding worktrees")
+
+
+def restore_tracking_branches():
+    print("Restoring tracking branches...")
+
+    git_config_result = subprocess.run(
+        ["git", "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"]
+    )
+    if git_config_result.returncode != 0:
+        print("Error configuring remote fetch refspec")
+        sys.exit(git_config_result.returncode)
+
+    git_fetch_result = subprocess.run(["git", "fetch", "--prune", "origin"])
+    if git_fetch_result.returncode != 0:
+        print("Error fetching")
+        sys.exit(git_fetch_result.returncode)
+
+    print("Restored tracking branches")
 
 
 def create_dotfiles_dir():
